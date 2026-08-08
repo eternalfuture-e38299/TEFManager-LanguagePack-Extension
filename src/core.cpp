@@ -155,7 +155,7 @@ static bool init_module(module_entry_t *entry) {
     LanguageManager::ProcessCopyCommandsInTexts = LanguageManager.GetMethod("ProcessCopyCommandsInTexts", 0);
 
 #if __ANDROID__
-    LanguageManager::LoadLanguage = LanguageManager.GetMethod("LoadLanguage", 1);
+    LanguageManager::LoadLanguage = LanguageManager.GetMethod("LoadLanguage", 2);
 #else
     LanguageManager::LoadLanguage = LanguageManager.GetMethod("ReloadLanguage", 1);
 #endif
