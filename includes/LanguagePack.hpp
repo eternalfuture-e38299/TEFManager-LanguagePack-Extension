@@ -137,6 +137,7 @@ struct PackInfo {
     std::string languagecode;
     PackType type;
     std::string fileextension;
+    std::string displayname;
 };
 
 class LanguagePack {

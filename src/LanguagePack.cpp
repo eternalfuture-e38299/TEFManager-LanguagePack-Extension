@@ -114,6 +114,7 @@ LanguagePack::LanguagePack(PackEntry entry) : _entry(std::move(entry)) {
     std::ranges::transform(typeStr, typeStr.begin(),
                            [](unsigned char c) { return std::tolower(c); });
     _info.type = typeStr == "languagepack" ? PackType::LanguagePack : PackType::PatchPack;
+    _info.displayname = config.value("displayname", _info.name + " by " + _info.author);
 }
 
 PackInfo LanguagePack::GetInfo() const {

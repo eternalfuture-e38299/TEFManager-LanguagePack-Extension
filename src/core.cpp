@@ -134,7 +134,7 @@ static bool init_module(module_entry_t *entry) {
     std::unordered_map<std::string, std::string> language_list{};
     LOGI("Initialize language list");
     for (const auto& [code, pack]: g_language_indexes) {
-        auto languageName = pack->GetInfo().name + " by " + pack->GetInfo().author;
+        auto languageName = pack->GetInfo().displayname;
         language_list[LanguageCodeToName(code)] = languageName;
         LOGI("Put: %s, into: %s", languageName.c_str(), LanguageCodeToName(code).c_str());
     }
