@@ -27,6 +27,52 @@
 #include <stdexcept>
 
 #include "Log.hpp"
+#include "tefkernel-cpp-wrapper/tefkernel/tefplugin/tpf_core.h"
+#include "tefkernel-cpp-wrapper/tefkernel/memdl/memdl.h"
+
+
+#if defined(_WIN32) || defined(_WIN64)
+    #define PLATFORM_NAME "windows"
+    #define DYLIB_EXT ".dll"
+    #define DYLIB_PREFIX ""
+#elif defined(__APPLE__) && defined(__MACH__)
+    #include <TargetConditionals.h>
+    #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+        #define PLATFORM_NAME "ios"
+    #else
+        #define PLATFORM_NAME "mac"
+    #endif
+    #define DYLIB_EXT ".dylib"
+    #define DYLIB_PREFIX "lib"
+#elif defined(__ANDROID__)
+    #define PLATFORM_NAME "android"
+    #define DYLIB_EXT ".so"
+    #define DYLIB_PREFIX "lib"
+#elif defined(__linux__)
+    #define PLATFORM_NAME "linux"
+    #define DYLIB_EXT ".so"
+    #define DYLIB_PREFIX "lib"
+#else
+    #define PLATFORM_NAME "unknown"
+    #define DYLIB_EXT ""
+    #define DYLIB_PREFIX ""
+#endif
+
+#if defined(__x86_64__) || defined(_M_X64)
+    #define ARCH_NAME "x64"
+#elif defined(__i386__) || defined(_M_IX86)
+    #define ARCH_NAME "x86"
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    #define ARCH_NAME "arm64"
+#elif defined(__arm__) || defined(_M_ARM)
+    #define ARCH_NAME "arm"
+#else
+    #define ARCH_NAME "unknown"
+#endif
+
+// 构建库路径宏
+#define LOCALIZATION_LIB_PATH \
+    "lib/" DYLIB_PREFIX "localization." PLATFORM_NAME "." ARCH_NAME DYLIB_EXT
 
 std::string LanguageCodeToName(const std::string &code) {
     for (size_t i = 0; i < languages_code.size(); ++i) {
@@ -103,6 +149,8 @@ LanguagePack::LanguagePack(PackEntry entry) : _entry(std::move(entry)) {
 
     mz_zip_reader_end(&zip_archive);
 
+    LOGI("Loaded %zu files from language pack: %s", total_loaded, _entry.file.string().c_str());
+
     auto config = nlohmann::json::parse(GetFileContentString("config.json"));
 
     _info.name = config["name"].get<std::string>();
@@ -115,6 +163,52 @@ LanguagePack::LanguagePack(PackEntry entry) : _entry(std::move(entry)) {
                            [](unsigned char c) { return std::tolower(c); });
     _info.type = typeStr == "languagepack" ? PackType::LanguagePack : PackType::PatchPack;
     _info.displayname = config.value("displayname", _info.name + " by " + _info.author);
+
+    LOGI("Language pack info: name='%s', language='%s', extension='%s', type='%s'",
+         _info.name.c_str(), _info.languagecode.c_str(),
+         _info.fileextension.c_str(), typeStr.c_str());
+
+    // ============ 处理 localizationbinary 格式 ============
+    if (_info.fileextension == "localizationbinary") {
+        LOGI("Loading localizationbinary...");
+
+        std::string lib_path = LOCALIZATION_LIB_PATH;
+        auto lib_data = GetFileData(lib_path);
+        if (lib_data.empty()) {
+            LOGE("Failed to load library: %s", lib_path.c_str());
+            _handle = nullptr;
+        } else {
+            _handle = memdl_open(lib_data.data(), lib_data.size(), MEMDL_LOCAL | MEMDL_LAZY);
+            if (!_handle) {
+                LOGE("Failed to open memory library");
+            } else {
+                tpf_register_shared_plugin_library(_handle);
+
+                auto localization_data = GetFileData("localization");
+                if (localization_data.empty()) {
+                    LOGE("Failed to load localization data");
+                } else {
+                    void* sym = memdl_sym(_handle, "init");
+                    if (!sym) {
+                        LOGE("Failed to find 'init' symbol");
+                    } else {
+                        using InitFunc = void (*)(const void*, size_t);
+                        auto* init = reinterpret_cast<InitFunc>(sym);
+                        if (init) {
+                            init(localization_data.data(), localization_data.size());
+                            LOGI("Init completed");
+                        } else {
+                            LOGE("Failed to cast init function");
+                        }
+                    }
+                }
+            }
+        }
+
+        LOGI("localizationbinary %s ", _handle ? "loaded" : "failed");
+    } else {
+        LOGI("Using standard JSON format: %s", _info.fileextension.c_str());
+    }
 }
 
 PackInfo LanguagePack::GetInfo() const {
@@ -139,4 +233,49 @@ std::string LanguagePack::GetFileContentString(const std::string &filename) cons
     const auto data = GetFileData(filename);
     std::string result(data.begin(), data.end());
     return result;
+}
+
+void LanguagePack::LoadText(patch_handle_t instance,
+    const std::function<void(patch_handle_t instance, const std::string &str)>& loadTextFromStr) const {
+
+    LOGI("LoadText called, handle: %p, type: %s", _handle, _info.fileextension.c_str());
+
+    if (!_handle) {
+        // 标准 JSON 加载
+        LOGI("Loading standard JSON format");
+        const auto file_list = GetFileList();
+        LOGI("Found %zu files in pack", file_list.size());
+
+        for (const auto& filename : file_list) {
+            if (filename.starts_with("localization/")) {
+                LOGI("Loading main file: '%s' (%zu bytes)",
+                     filename.c_str(), GetFileContentString(filename).size());
+                loadTextFromStr(instance, GetFileContentString(filename));
+            }
+        }
+        LOGI("JSON loading complete");
+    } else {
+        // localizationbinary 加载
+        LOGI("Loading localizationbinary format");
+        LOGI("Getting 'load' symbol...");
+
+        void* sym = memdl_sym(_handle, "load");
+        if (!sym) {
+            LOGE("Failed to find 'load' symbol");
+            return;
+        }
+
+        LOGI("'load' symbol found at: %p", sym);
+
+        using LoadFunc = void (*)(void*);
+        auto* load = reinterpret_cast<LoadFunc>(sym);
+        if (!load) {
+            LOGE("Failed to cast 'load' function pointer");
+            return;
+        }
+
+        LOGI("Calling load function with instance: %p", instance);
+        load(instance);
+        LOGI("Load function called successfully");
+    }
 }

@@ -18,6 +18,7 @@ endif ()
 include_directories(includes)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Release")
+    target_compile_options(languagepack_extension PRIVATE -O3)
     if (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
         add_custom_command(TARGET languagepack_extension POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E echo "Stripping symbols from languagepack_extension..."
@@ -80,19 +81,13 @@ else()
     endif()
 endif()
 
-#[[
-message(STATUS "========== DEBUG ==========")
-message(STATUS "SYSTEM_NAME: ${SYSTEM_NAME}")
-message(STATUS "ARCH: ${ARCH}")
-message(STATUS "CMAKE_SYSTEM_NAME: ${CMAKE_SYSTEM_NAME}")
-message(STATUS "CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
-message(STATUS "WIN32: ${WIN32}")
-message(STATUS "MINGW: ${MINGW}")
-message(STATUS "============================")]]
-
-
-# 设置输出文件名
-
 set_target_properties(languagepack_extension PROPERTIES
         OUTPUT_NAME "module.${SYSTEM_NAME}.${ARCH}"
 )
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    set_target_properties(languagepack_extension PROPERTIES
+            OUTPUT_NAME "module.${SYSTEM_NAME}.${ARCH}"
+            PREFIX ""
+    )
+endif ()

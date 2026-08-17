@@ -24,9 +24,12 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "tefkernel-cpp-wrapper/tefkernel/patchlib/type.h"
 
 struct PackEntry {
     std::filesystem::path file;
@@ -144,6 +147,7 @@ class LanguagePack {
     PackEntry _entry{};
     PackInfo _info{};
     std::unordered_map<std::string, std::vector<uint8_t> > _data{};
+    void* _handle{};
 
 public:
     explicit LanguagePack(PackEntry entry);
@@ -155,4 +159,6 @@ public:
     std::vector<uint8_t> GetFileData(const std::string &filename) const;
 
     std::string GetFileContentString(const std::string &filename) const;
+
+    void LoadText(patch_handle_t instance, const std::function<void(patch_handle_t instance, const std::string& str)>& loadTextFromStr) const;
 };

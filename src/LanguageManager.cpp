@@ -138,14 +138,7 @@ void LanguageManager::LoadLanguageHook(patch_handle_t instance, void **args, voi
             LOGI("LoadLanguageHook: Found matching main pack: '%s'", pack.GetInfo().name.c_str());
             found_main_pack = true;
 
-            for (const auto &file_list = pack.GetFileList(); const auto &filename : file_list) {
-                if (filename.starts_with("localization/")) {
-                    LOGI("LoadLanguageHook: Loading main file: '%s' (%zu bytes)",
-                         filename.c_str(), pack.GetFileContentString(filename).size());
-                    LoadTextFromStr(instance, pack.GetFileContentString(filename));
-                }
-            }
-
+            pack.LoadText(instance, LoadTextFromStr);
 #if __ANDROID__
             const auto newCulture = FromLegacyId.Invoke<patch_handle_t>(nullptr, LanguageCodeToId(languages_code[i]));
             set_ActiveCulture.InvokeVoid(instance, newCulture);
